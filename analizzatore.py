@@ -12,6 +12,8 @@ from tkinter import ttk, filedialog, messagebox, scrolledtext
 from typing import List, Dict, Tuple, Optional
 from dataclasses import dataclass
 import threading
+import importlib.util
+import json
 
 @dataclass
 class SyntaxError:
@@ -21,9 +23,174 @@ class SyntaxError:
     description: str
     suggestion: str
 
+class PluginBase:
+    """Classe base per tutti i plugin"""
+    
+    def get_id(self):
+        """Ritorna l'ID unico del plugin"""
+        return "base_plugin"
+    
+    def get_name(self):
+        """Ritorna il nome del plugin"""
+        return "Plugin Base"
+    
+    def get_description(self):
+        """Ritorna la descrizione del plugin"""
+        return "Plugin base per l'analizzatore PHP"
+    
+    def get_version(self):
+        """Ritorna la versione del plugin"""
+        return "1.0.0"
+    
+    def get_author(self):
+        """Ritorna l'autore del plugin"""
+        return "PHP Analyzer Team"
+    
+    def get_hooks(self):
+        """Ritorna un dizionario di hook implementati dal plugin"""
+        return {}
+    
+    def get_dependencies(self):
+        """Ritorna una lista di ID dei plugin da cui dipende"""
+        return []
+    
+    def get_config_defaults(self):
+        """Ritorna la configurazione predefinita del plugin"""
+        return {}
+
+class PluginManager:
+    """Gestore dei plugin per l'analizzatore PHP"""
+    
+    def __init__(self, plugins_dir="plugins"):
+        self.plugins_dir = plugins_dir
+        self.plugins = {}
+        self.hooks = {}
+        self.config_file = os.path.join(plugins_dir, "config.json")
+        self.plugin_configs = {}
+        
+        # Carica la configurazione dei plugin
+        self._load_config()
+    
+    def diagnose_plugins_directory(self):
+        """Stampa informazioni diagnostiche sulla directory dei plugin"""
+        print(f"\n=== Diagnostica directory plugin ===")
+        plugins_dir = os.path.abspath(self.plugins_dir)
+        print(f"Directory plugin: {plugins_dir}")
+        
+        if not os.path.exists(plugins_dir):
+            print(f"La directory {plugins_dir} non esiste!")
+            return
+        
+        files = os.listdir(plugins_dir)
+        print(f"Numero di file nella directory: {len(files)}")
+        
+        python_files = [f for f in files if f.endswith('.py') and not f.startswith('__')]
+        print(f"File Python trovati: {len(python_files)}")
+        for py_file in python_files:
+            print(f"  - {py_file}")
+        
+        other_files = [f for f in files if not (f.endswith('.py') and not f.startswith('__'))]
+        if other_files:
+            print(f"Altri file trovati: {len(other_files)}")
+            for other_file in other_files:
+                print(f"  - {other_file}")
+        
+        print("=== Fine diagnostica ===\n")
+        
+    def _load_config(self):
+        """Carica la configurazione dei plugin dal file JSON"""
+        try:
+            if os.path.exists(self.config_file):
+                with open(self.config_file, 'r', encoding='utf-8') as f:
+                    self.plugin_configs = json.load(f)
+            else:
+                self.plugin_configs = {}
+        except Exception as e:
+            print(f"Errore nel caricamento della configurazione dei plugin: {e}")
+            self.plugin_configs = {}
+    
+    def _save_config(self):
+        """Salva la configurazione dei plugin nel file JSON"""
+        try:
+            os.makedirs(os.path.dirname(self.config_file), exist_ok=True)
+            with open(self.config_file, 'w', encoding='utf-8') as f:
+                json.dump(self.plugin_configs, f, indent=4)
+        except Exception as e:
+            print(f"Errore nel salvataggio della configurazione dei plugin: {e}")
+    
+    def load_plugins(self):
+        """Carica tutti i plugin dalla directory plugins"""
+        print(f"\n=== Caricamento plugin ===")
+        
+        # Esegui diagnostica
+        self.diagnose_plugins_directory()
+        
+        if not os.path.exists(self.plugins_dir):
+            os.makedirs(self.plugins_dir, exist_ok=True)
+            print(f"Directory plugin creata: {self.plugins_dir}")
+            return
+        
+        # Svuota le liste di plugin e hook
+        self.plugins = {}
+        self.hooks = {}
+        
+        # Carica tutti i file Python nella directory plugins
+        for filename in os.listdir(self.plugins_dir):
+            if filename.endswith('.py') and not filename.startswith('__'):
+                try:
+                    self._load_plugin_from_file(os.path.join(self.plugins_dir, filename))
+                except Exception as e:
+                    print(f"Errore nel caricamento del plugin {filename}: {e}")
+        
+        # Registra gli hook di tutti i plugin
+        for plugin_id, plugin in self.plugins.items():
+            self._register_plugin_hooks(plugin_id, plugin)
+        
+        print(f"=== Caricamento completato: {len(self.plugins)} plugin ===\n")
+
+
+
+    def _register_plugin_hooks(self, plugin_id, plugin):
+        """Registra gli hook di un plugin"""
+        hooks = plugin.get_hooks()
+        for hook_name, methods in hooks.items():
+            if hook_name not in self.hooks:
+                self.hooks[hook_name] = []
+            
+            for method in methods:
+                self.hooks[hook_name].append((plugin_id, method))
+    
+    def get_plugin_config(self, plugin_id):
+        """Ritorna la configurazione di un plugin"""
+        return self.plugin_configs.get(plugin_id, {})
+    
+    def save_plugin_config(self, plugin_id, config):
+        """Salva la configurazione di un plugin"""
+        self.plugin_configs[plugin_id] = config
+        self._save_config()
+    
+    def call_hook(self, hook_name, *args, **kwargs):
+        """Esegue tutti i gestori registrati per un hook"""
+        results = []
+        
+        if hook_name in self.hooks:
+            for plugin_id, method in self.hooks[hook_name]:
+                try:
+                    # Passa la configurazione del plugin come argomento
+                    kwargs['plugin_config'] = self.get_plugin_config(plugin_id)
+                    result = method(*args, **kwargs)
+                    if result is not None:
+                        results.append(result)
+                except Exception as e:
+                    print(f"Errore nell'esecuzione dell'hook {hook_name} del plugin {plugin_id}: {e}")
+        
+        return results
+
 class PHPAnalyzer:
     def __init__(self):
-        self.errors: List[SyntaxError] = []
+        self.errors = []
+        self.plugin_manager = PluginManager()
+        self.plugin_manager.load_plugins()
         
     def analyze_file(self, filepath: str) -> List[SyntaxError]:
         """Analizza un singolo file PHP"""
@@ -32,14 +199,19 @@ class PHPAnalyzer:
         try:
             with open(filepath, 'r', encoding='utf-8') as file:
                 lines = file.readlines()
-                
-            self._check_brackets(lines)
-            self._check_semicolons(lines)
-            self._check_quotes(lines)
+            
+            # Esegui controlli base
             self._check_php_tags(lines)
+            self._check_quotes(lines)
+            self._check_semicolons(lines)
             self._check_function_syntax(lines)
             self._check_array_syntax(lines)
             self._check_variable_syntax(lines)
+            
+            # Esegui controlli tramite plugin
+            plugin_errors = self.plugin_manager.call_hook('syntax_check', filepath=filepath, lines=lines)
+            for error_list in plugin_errors:
+                self.errors.extend(error_list)
             
         except Exception as e:
             print(f"Errore durante l'analisi del file {filepath}: {e}")
@@ -537,6 +709,29 @@ class PHPAnalyzerGUI:
         
         self.create_widgets()
     
+    def diagnose_plugins(self):
+        """Esegue la diagnostica dei plugin"""
+        self.analyzer.plugin_manager.diagnose_plugins_directory()
+        messagebox.showinfo("Diagnostica", "Diagnostica completa. Controlla la console per i dettagli.")
+    
+    def show_plugin_manager(self):
+        """Mostra la finestra di gestione dei plugin"""
+        manager_window = tk.Toplevel(self.root)
+        manager_window.title("Gestione Plugin")
+        manager_window.geometry("600x500")
+        
+        # Frame principale
+        main_frame = ttk.Frame(manager_window, padding="10")
+        main_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Il resto del tuo codice per questo metodo...
+    
+    def _toggle_plugin(self, plugin_id):
+        """Abilita o disabilita un plugin"""
+        enabled = self.plugin_enabled[plugin_id].get()
+        print(f"Plugin {plugin_id} {'abilitato' if enabled else 'disabilitato'}")
+        # Qui potresti salvare lo stato dei plugin in una configurazione
+        
     def create_widgets(self):
         # Frame principale
         main_frame = ttk.Frame(self.root, padding="10")
@@ -552,6 +747,9 @@ class PHPAnalyzerGUI:
         control_frame = ttk.Frame(main_frame)
         control_frame.grid(row=0, column=0, sticky=(tk.W, tk.E), pady=(0, 10))
         
+        # Nella funzione create_widgets, aggiungi questo pulsante al control_frame
+        ttk.Button(control_frame, text="Gestione Plugin", command=self.show_plugin_manager).grid(row=0, column=6, padx=5)
+        
         # Pulsanti per selezionare file/directory
         ttk.Button(control_frame, text="Seleziona File PHP", command=self.select_file).grid(row=0, column=0, padx=5)
         ttk.Button(control_frame, text="Seleziona Directory", command=self.select_directory).grid(row=0, column=1, padx=5)
@@ -562,6 +760,12 @@ class PHPAnalyzerGUI:
         
         # Pulsante di analisi
         ttk.Button(control_frame, text="Analizza", command=self.analyze).grid(row=0, column=3, padx=5)
+        
+        # Pulsante di ricarica plugin
+        ttk.Button(control_frame, text="Ricarica Plugin", command=self.reload_plugins).grid(row=0, column=4, padx=5)
+        
+        # Nella funzione create_widgets, aggiungi questo pulsante al control_frame
+        ttk.Button(control_frame, text="Diagnostica Plugin", command=self.diagnose_plugins).grid(row=0, column=5, padx=5)
         
         # Label per mostrare il file/directory corrente
         self.current_path_var = tk.StringVar(value="Nessun file/directory selezionato")
@@ -590,7 +794,70 @@ class PHPAnalyzerGUI:
         self.status_var = tk.StringVar(value="Pronto")
         status_bar = ttk.Label(main_frame, textvariable=self.status_var, relief=tk.SUNKEN, anchor=tk.W)
         status_bar.grid(row=4, column=0, sticky=(tk.W, tk.E), pady=(10, 0))
+        
+        # Menu bar
+        menu_bar = tk.Menu(self.root)
+        self.root.config(menu=menu_bar)
+        
+        # Menu File
+        file_menu = tk.Menu(menu_bar, tearoff=0)
+        menu_bar.add_cascade(label="File", menu=file_menu)
+        file_menu.add_command(label="Seleziona File", command=self.select_file)
+        file_menu.add_command(label="Seleziona Directory", command=self.select_directory)
+        file_menu.add_separator()
+        file_menu.add_command(label="Esci", command=self.root.quit)
+        
+        # Menu Plugin
+        plugin_menu = tk.Menu(menu_bar, tearoff=0)
+        menu_bar.add_cascade(label="Plugin", menu=plugin_menu)
+        plugin_menu.add_command(label="Ricarica Plugin", command=self.reload_plugins)
+        plugin_menu.add_separator()
+        
+        # Aggiungi tutti i plugin al menu
+        for plugin_id, plugin in self.analyzer.plugin_manager.plugins.items():
+            plugin_menu.add_command(
+                label=f"{plugin.get_name()} - {plugin.get_version()}",
+                command=lambda pid=plugin_id: self.configure_plugin(pid)
+            )
+        
+        # Chiamata agli hook ui_extension
+        self.analyzer.plugin_manager.call_hook('ui_extension', gui=self)
     
+    def reload_plugins(self):
+        """Ricarica tutti i plugin"""
+        self.analyzer.plugin_manager.load_plugins()
+        messagebox.showinfo("Plugin", f"Caricati {len(self.analyzer.plugin_manager.plugins)} plugin")
+        
+        # Aggiorna l'interfaccia per riflettere i nuovi plugin
+        self.root.destroy()
+        root = tk.Tk()
+        app = PHPAnalyzerGUI(root)
+        root.mainloop()
+    
+    def configure_plugin(self, plugin_id):
+        """Mostra la finestra di configurazione di un plugin"""
+        plugin = self.analyzer.plugin_manager.plugins.get(plugin_id)
+        if not plugin:
+            return
+        
+        config_window = tk.Toplevel(self.root)
+        config_window.title(f"Configurazione {plugin.get_name()}")
+        config_window.geometry("500x400")
+        
+        ttk.Label(config_window, text=f"Plugin: {plugin.get_name()} (ID: {plugin_id})").pack(pady=10)
+        ttk.Label(config_window, text=f"Descrizione: {plugin.get_description()}").pack(pady=5)
+        ttk.Label(config_window, text=f"Versione: {plugin.get_version()}").pack(pady=5)
+        ttk.Label(config_window, text=f"Autore: {plugin.get_author()}").pack(pady=5)
+        
+        # Visualizza gli hook implementati
+        hooks_text = "Hook implementati:\n"
+        plugin_hooks = plugin.get_hooks()
+        for hook_name, methods in plugin_hooks.items():
+            for method in methods:
+                hooks_text += f"- {hook_name}: {method.__name__}\n"
+        
+        ttk.Label(config_window, text=hooks_text).pack(pady=10)
+
     def select_file(self):
         filename = filedialog.askopenfilename(
             title="Seleziona file PHP",
@@ -599,13 +866,15 @@ class PHPAnalyzerGUI:
         if filename:
             self.current_file = filename
             self.current_path_var.set(f"File: {filename}")
-    
+            pass
+            
     def select_directory(self):
         directory = filedialog.askdirectory(title="Seleziona directory")
         if directory:
             self.current_file = directory
             self.current_path_var.set(f"Directory: {directory}")
-    
+            pass
+            
     def analyze(self):
         if not self.current_file:
             messagebox.showwarning("Attenzione", "Seleziona prima un file o una directory")
@@ -618,7 +887,8 @@ class PHPAnalyzerGUI:
         thread = threading.Thread(target=self.run_analysis)
         thread.daemon = True
         thread.start()
-    
+
+        
     def run_analysis(self):
         try:
             files_to_analyze = []
@@ -699,7 +969,8 @@ class PHPAnalyzerGUI:
                 self.analyze()  # Rianalizza dopo la correzione
             else:
                 messagebox.showwarning("Attenzione", "Nessun file è stato corretto")
-    
+        pass
+        
     def save_report(self):
         if not self.error_text.get("1.0", tk.END).strip():
             messagebox.showwarning("Attenzione", "Nessun report da salvare")
@@ -717,11 +988,13 @@ class PHPAnalyzerGUI:
                 messagebox.showinfo("Successo", "Report salvato con successo")
             except Exception as e:
                 messagebox.showerror("Errore", f"Errore durante il salvataggio: {str(e)}")
-    
+        pass
+        
     def clear_output(self):
         self.error_text.delete("1.0", tk.END)
         self.current_errors = []
-
+        pass
+        
 def main():
     root = tk.Tk()
     app = PHPAnalyzerGUI(root)
