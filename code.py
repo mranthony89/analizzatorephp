@@ -162,8 +162,16 @@ class PluginManager:
                 print(f"Impossibile creare directory plugin: {str(e)}")
             return
         
+        print(f"Cercando plugin nella directory: {directory}")
+        
+        # Stampa tutti i file trovati nella directory
+        all_files = os.listdir(directory)
+        print(f"File trovati nella directory: {all_files}")
+        
         # Prima carica i plugin senza dipendenze
-        plugin_files = [f for f in os.listdir(directory) if f.endswith('.py') and not f.startswith('__')]
+        plugin_files = [f for f in all_files if f.endswith('.py') and not f.startswith('__')]
+        print(f"File Python trovati: {plugin_files}")
+        
         loaded_plugins = set()
         
         while plugin_files:
@@ -173,6 +181,8 @@ class PluginManager:
             for filename in plugin_files:
                 try:
                     module_path = os.path.join(directory, filename)
+                    print(f"Tentativo di caricamento del plugin: {filename} da {module_path}")
+                    
                     spec = importlib.util.spec_from_file_location("plugin", module_path)
                     module = importlib.util.module_from_spec(spec)
                     spec.loader.exec_module(module)
@@ -193,6 +203,7 @@ class PluginManager:
                     for plugin_class in plugin_classes:
                         plugin_instance = plugin_class()
                         deps = plugin_instance.get_dependencies()
+                        print(f"Plugin {plugin_instance.get_id()} trovato in {filename}")
                         
                         if all(dep in loaded_plugins for dep in deps):
                             if self.register_plugin(plugin_instance):
@@ -201,6 +212,7 @@ class PluginManager:
                                 print(f"Plugin caricato: {plugin_instance.get_id()} (v{plugin_instance.get_version()})")
                         else:
                             all_deps_loaded = False
+                            print(f"Dipendenze non soddisfatte per {plugin_instance.get_id()}: {deps}")
                     
                     if not all_deps_loaded:
                         remaining_files.append(filename)
@@ -216,6 +228,8 @@ class PluginManager:
                 break
             
             plugin_files = remaining_files
+        
+        print(f"Caricamento plugin completato. Plugin caricati: {list(self.plugins.keys())}")
         
         # Salva la configurazione aggiornata
         self.save_config()
@@ -376,7 +390,7 @@ class PHPAnalyzer:
             self.plugin_manager.execute_hook('pre_analyze', filepath=filepath, lines=lines)
             
             # Controlli di sintassi di base
-            self._check_brackets(lines)
+            # Nota: _check_brackets è stato spostato in un plugin
             self._check_semicolons(lines)
             self._check_quotes(lines)
             self._check_php_tags(lines)
@@ -532,62 +546,7 @@ class PHPAnalyzer:
         
         return ''.join(result)
     
-    def _check_brackets(self, lines: List[str]):
-        """Controlla parentesi, graffe e quadre"""
-        
-        # Prima uniamo tutte le linee per avere una visione completa del codice
-        full_code = '\n'.join(lines)
-        
-        # Rimuoviamo stringhe e commenti per evitare falsi positivi
-        cleaned_code = self._remove_strings_and_comments(full_code)
-        
-        # Ora controlliamo i bracket nel codice pulito
-        stack = []
-        brackets = {'(': ')', '{': '}', '[': ']'}
-        
-        line_number = 1
-        column = 0
-        
-        for i, char in enumerate(cleaned_code):
-            if char == '\n':
-                line_number += 1
-                column = 0
-                continue
-            
-            column += 1
-            
-            if char in brackets.keys():
-                stack.append((char, line_number, column))
-            elif char in brackets.values():
-                if not stack:
-                    self.errors.append(SyntaxError(
-                        line_number, 
-                        lines[line_number-1].strip() if line_number <= len(lines) else "", 
-                        "Parentesi chiusa senza apertura",
-                        f"Trovata '{char}' senza corrispondente apertura",
-                        f"Verifica se manca una '{list(brackets.keys())[list(brackets.values()).index(char)]}' prima"
-                    ))
-                else:
-                    opening, open_line, open_col = stack.pop()
-                    if brackets[opening] != char:
-                        self.errors.append(SyntaxError(
-                            line_number, 
-                            lines[line_number-1].strip() if line_number <= len(lines) else "", 
-                            "Parentesi non corrispondente",
-                            f"Atteso '{brackets[opening]}' ma trovato '{char}'",
-                            f"Sostituisci '{char}' con '{brackets[opening]}'"
-                        ))
-        
-        # Controlla parentesi non chiuse
-        while stack:
-            opening, line_num, col = stack.pop()
-            self.errors.append(SyntaxError(
-                line_num, 
-                lines[line_num-1].strip() if line_num <= len(lines) else "", 
-                "Parentesi non chiusa",
-                f"'{opening}' aperta ma mai chiusa",
-                f"Aggiungi '{brackets[opening]}' alla fine del blocco"
-            ))
+    # Nota: il metodo _check_brackets è stato rimosso perché spostato nel plugin syntax_checker_brackets.py
     
     def _check_semicolons(self, lines: List[str]):
         """Controlla i punti e virgola mancanti"""
@@ -793,64 +752,63 @@ class PHPAnalyzer:
                             "La dichiarazione della funzione non segue il pattern corretto",
                             "Usa: function nomeFunzione(parametri) {"
                         ))
-    
     def _check_array_syntax(self, lines: List[str]):
-        """Controlla la sintassi degli array"""
-        for i, line in enumerate(lines, 1):
-            # Se siamo in un blocco HTML, salta
-            if self._is_in_html_block(lines, i - 1):
-                continue
-                
-            # Ignora commenti
-            in_single_comment, in_multi_comment = self._is_in_comment(lines, i)
-            if in_single_comment or in_multi_comment:
-                continue
-                
-            # Controlla virgole negli array
-            if 'array(' in line or '[' in line:
-                # Cerca pattern di elementi array senza virgola
-                if re.search(r'["\'\w]\s+["\'\w]', line):
-                    # Verifica che non sia dentro una stringa o un commento
-                    match = re.search(r'["\'\w]\s+["\'\w]', line)
-                    if match and not self._is_in_string(line, match.start()):
-                        self.errors.append(SyntaxError(
-                            i, line.strip(), "Virgola mancante in array",
-                            "Possibile virgola mancante tra elementi dell'array",
-                            "Aggiungi ',' tra gli elementi dell'array"
-                        ))
-    
-    def _check_variable_syntax(self, lines: List[str]):
-        """Controlla la sintassi delle variabili"""
-        for i, line in enumerate(lines, 1):
-            # Se siamo in un blocco HTML o JavaScript, salta
-            if self._is_in_html_block(lines, i - 1):
-                continue
-                
-            # Ignora il codice JavaScript
-            if re.search(r'<script|var\s+\w+|let\s+\w+|const\s+\w+|document\.|function\s*\(', line):
-                continue
-                
-            # Ignora commenti
-            in_single_comment, in_multi_comment = self._is_in_comment(lines, i)
-            if in_single_comment or in_multi_comment:
-                continue
-                
-            # Trova variabili senza $ in PHP
-            words = re.findall(r'\b\w+\b', line)
-            for word in words:
-                # Se la parola è seguita da = e non è una keyword
-                match = re.search(fr'\b{word}\s*=(?!=)', line)
-                if match:
-                    if word not in ['function', 'class', 'public', 'private', 'protected', 'static', 'const', 'var']:
-                        # Verifica che non sia in una stringa o in JavaScript
-                        if not self._is_in_string(line, match.start()):
-                            # Verifica che non sia già una variabile PHP con $
-                            if not re.search(fr'\${word}', line):
-                                self.errors.append(SyntaxError(
-                                    i, line.strip(), "Variabile senza $",
-                                    f"La variabile '{word}' non ha il simbolo $",
-                                    f"Cambia '{word}' in '${word}'"
-                                ))
+    """Controlla la sintassi degli array"""
+    for i, line in enumerate(lines, 1):
+        # Se siamo in un blocco HTML, salta
+        if self._is_in_html_block(lines, i - 1):
+            continue
+            
+        # Ignora commenti
+        in_single_comment, in_multi_comment = self._is_in_comment(lines, i)
+        if in_single_comment or in_multi_comment:
+            continue
+            
+        # Controlla virgole negli array
+        if 'array(' in line or '[' in line:
+            # Cerca pattern di elementi array senza virgola
+            if re.search(r'["\'\w]\s+["\'\w]', line):
+                # Verifica che non sia dentro una stringa o un commento
+                match = re.search(r'["\'\w]\s+["\'\w]', line)
+                if match and not self._is_in_string(line, match.start()):
+                    self.errors.append(SyntaxError(
+                        i, line.strip(), "Virgola mancante in array",
+                        "Possibile virgola mancante tra elementi dell'array",
+                        "Aggiungi ',' tra gli elementi dell'array"
+                    ))
+
+def _check_variable_syntax(self, lines: List[str]):
+    """Controlla la sintassi delle variabili"""
+    for i, line in enumerate(lines, 1):
+        # Se siamo in un blocco HTML o JavaScript, salta
+        if self._is_in_html_block(lines, i - 1):
+            continue
+            
+        # Ignora il codice JavaScript
+        if re.search(r'<script|var\s+\w+|let\s+\w+|const\s+\w+|document\.|function\s*\(', line):
+            continue
+            
+        # Ignora commenti
+        in_single_comment, in_multi_comment = self._is_in_comment(lines, i)
+        if in_single_comment or in_multi_comment:
+            continue
+            
+        # Trova variabili senza $ in PHP
+        words = re.findall(r'\b\w+\b', line)
+        for word in words:
+            # Se la parola è seguita da = e non è una keyword
+            match = re.search(fr'\b{word}\s*=(?!=)', line)
+            if match:
+                if word not in ['function', 'class', 'public', 'private', 'protected', 'static', 'const', 'var']:
+                    # Verifica che non sia in una stringa o in JavaScript
+                    if not self._is_in_string(line, match.start()):
+                        # Verifica che non sia già una variabile PHP con $
+                        if not re.search(fr'\${word}', line):
+                            self.errors.append(SyntaxError(
+                                i, line.strip(), "Variabile senza $",
+                                f"La variabile '{word}' non ha il simbolo $",
+                                f"Cambia '{word}' in '${word}'"
+                            ))
     
     def fix_file(self, filepath: str, errors: List[SyntaxError]) -> bool:
         """Corregge automaticamente gli errori nel file"""
@@ -1241,7 +1199,7 @@ class PHPAnalyzerGUI:
                 self.preview_text.delete("1.0", tk.END)
                 self.preview_text.insert(tk.END, f"Errore nella preview del file: {str(e)}")
     
-    def show_config(self):
+ 
         """Mostra la finestra di configurazione dei plugin"""
         config_window = tk.Toplevel(self.root)
         config_window.title("Configurazione Plugin")
@@ -1249,6 +1207,41 @@ class PHPAnalyzerGUI:
         
         notebook = ttk.Notebook(config_window)
         notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        # Controllo del numero di plugin caricati
+        num_plugins = len(self.analyzer.plugin_manager.plugins)
+        if num_plugins == 0:
+            # Nessun plugin caricato, mostra un messaggio
+            frame = ttk.Frame(notebook)
+            notebook.add(frame, text="Nessun Plugin")
+            ttk.Label(frame, text="Nessun plugin è stato caricato. Verifica la directory 'plugins'.").pack(pady=20)
+            
+            # Aggiungi informazioni di debug
+            plugins_dir = os.path.join(os.getcwd(), 'plugins')
+            debug_info = f"Directory plugins: {plugins_dir}\n"
+            if os.path.exists(plugins_dir):
+                debug_info += f"File presenti: {[f for f in os.listdir(plugins_dir) if os.path.isfile(os.path.join(plugins_dir, f))]}\n"
+            else:
+                debug_info += "Directory plugins non trovata!\n"
+            debug_info += f"Hook registrati: {self.analyzer.plugin_manager.hooks}"
+            
+            debug_text = tk.Text(frame, height=10, width=60)
+            debug_text.pack(pady=10, padx=10, fill=tk.BOTH, expand=True)
+            debug_text.insert(tk.END, debug_info)
+            debug_text.config(state=tk.DISABLED)
+            
+            # Aggiungi pulsante per ricaricare i plugin
+            def reload_plugins():
+                self.analyzer.plugin_manager.load_plugins_from_directory("plugins")
+                messagebox.showinfo("Info", "Tentativo di ricaricamento plugin eseguito")
+                config_window.destroy()
+                self.show_config()  # Riapri la finestra di configurazione
+            
+            ttk.Button(frame, text="Ricarica Plugin", command=reload_plugins).pack(pady=10)
+            
+            return
+        
+        print(f"Plugin caricati per configurazione: {list(self.analyzer.plugin_manager.plugins.keys())}")
         
         # Crea una tab per ogni plugin
         for plugin_id, plugin in self.analyzer.plugin_manager.plugins.items():
@@ -1322,8 +1315,7 @@ class PHPAnalyzerGUI:
             
             ttk.Button(btn_frame, text="Salva", command=save_config).pack(side=tk.RIGHT, padx=5)
             ttk.Button(btn_frame, text="Annulla", command=config_window.destroy).pack(side=tk.RIGHT, padx=5)
-    
-    def add_tree_view(self, parent_item=None, path=None):
+def add_tree_view(self, parent_item=None, path=None):
         """Aggiunge una vista ad albero per i file e directory"""
         if not hasattr(self, 'tree_view'):
             # Crea il treeview se non esiste
@@ -1423,7 +1415,466 @@ class PHPAnalyzerGUI:
 
 def main():
     # Crea la directory plugins se non esiste
-    os.makedirs("plugins", exist_ok=True)
+    plugins_dir = "plugins"
+    if not os.path.exists(plugins_dir):
+        try:
+            os.makedirs(plugins_dir)
+            print(f"Creata directory plugin: {plugins_dir}")
+        except Exception as e:
+            print(f"Impossibile creare directory plugin: {str(e)}")
+    
+    # Verifica se i file dei plugin esistono e altrimenti li crea
+    expected_plugins = {
+        "syntax_checker_brackets.py": """#!/usr/bin/env python3
+\"\"\"
+Plugin per il controllo dei parentesi in PHP
+\"\"\"
+import re
+from typing import List
+
+try:
+    from analizzatore_php_light import PluginBase, SyntaxError
+except ImportError:
+    try:
+        from analizzatore import PluginBase, SyntaxError
+    except ImportError:
+        # Definizione di fallback per IDE
+        from dataclasses import dataclass
+        
+        @dataclass
+        class SyntaxError:
+            line_number: int
+            line_content: str
+            error_type: str
+            description: str
+            suggestion: str
+        
+        class PluginBase:
+            def get_id(self): pass
+            def get_name(self): pass
+            def get_description(self): pass
+            def get_version(self): pass
+            def get_author(self): pass
+            def get_hooks(self): pass
+            def get_dependencies(self): pass
+            def get_config_defaults(self): pass
+
+class BracketsSyntaxChecker(PluginBase):
+    \"\"\"
+    Plugin per il controllo della sintassi di parentesi in PHP
+    \"\"\"
+    
+    def get_id(self):
+        return "brackets_syntax_checker"
+        
+    def get_name(self):
+        return "Brackets Syntax Checker"
+        
+    def get_description(self):
+        return "Controlla la corretta apertura e chiusura di parentesi, graffe e quadre"
+        
+    def get_version(self):
+        return "1.0.0"
+        
+    def get_author(self):
+        return "PHP Analyzer Team"
+        
+    def get_hooks(self):
+        return {
+            'syntax_check': [self.check_brackets]
+        }
+        
+    def get_config_defaults(self):
+        return {}
+        
+    def check_brackets(self, filepath: str, lines: List[str], plugin_config: dict = None, **kwargs) -> List[SyntaxError]:
+        \"\"\"
+        Controlla la corretta apertura e chiusura di parentesi in un file PHP
+        
+        Args:
+            filepath: Il percorso del file PHP
+            lines: Le linee del file
+            plugin_config: La configurazione del plugin
+            
+        Returns:
+            Una lista di errori trovati
+        \"\"\"
+        errors = []
+        
+        # Prima uniamo tutte le linee per avere una visione completa del codice
+        full_code = '\\n'.join(lines)
+        
+        # Rimuoviamo stringhe e commenti per evitare falsi positivi
+        cleaned_code = self._remove_strings_and_comments(full_code)
+        
+        # Ora controlliamo i bracket nel codice pulito
+        stack = []
+        brackets = {'(': ')', '{': '}', '[': ']'}
+        
+        line_number = 1
+        column = 0
+        
+        for i, char in enumerate(cleaned_code):
+            if char == '\\n':
+                line_number += 1
+                column = 0
+                continue
+            
+            column += 1
+            
+            if char in brackets.keys():
+                stack.append((char, line_number, column))
+            elif char in brackets.values():
+                if not stack:
+                    errors.append(SyntaxError(
+                        line_number, 
+                        lines[line_number-1].strip() if line_number <= len(lines) else "", 
+                        "Parentesi chiusa senza apertura",
+                        f"Trovata '{char}' senza corrispondente apertura",
+                        f"Verifica se manca una '{list(brackets.keys())[list(brackets.values()).index(char)]}' prima"
+                    ))
+                else:
+                    opening, open_line, open_col = stack.pop()
+                    if brackets[opening] != char:
+                        errors.append(SyntaxError(
+                            line_number, 
+                            lines[line_number-1].strip() if line_number <= len(lines) else "", 
+                            "Parentesi non corrispondente",
+                            f"Atteso '{brackets[opening]}' ma trovato '{char}'",
+                            f"Sostituisci '{char}' con '{brackets[opening]}'"
+                        ))
+        
+        # Controlla parentesi non chiuse
+        while stack:
+            opening, line_num, col = stack.pop()
+            errors.append(SyntaxError(
+                line_num, 
+                lines[line_num-1].strip() if line_num <= len(lines) else "", 
+                "Parentesi non chiusa",
+                f"'{opening}' aperta ma mai chiusa",
+                f"Aggiungi '{brackets[opening]}' alla fine del blocco"
+            ))
+            
+        return errors
+    
+    def _remove_strings_and_comments(self, text):
+        \"\"\"Rimuove stringhe e commenti dal testo per evitare falsi positivi\"\"\"
+        result = []
+        i = 0
+        in_single_quote = False
+        in_double_quote = False
+        in_single_comment = False
+        in_multi_comment = False
+        
+        while i < len(text):
+            char = text[i]
+            
+            # Gestione commenti multi-linea
+            if not in_single_quote and not in_double_quote:
+                if not in_multi_comment and text[i:i+2] == '/*':
+                    in_multi_comment = True
+                    result.append('  ')  # Sostituisci con spazi per mantenere la posizione
+                    i += 2
+                    continue
+                elif in_multi_comment and text[i:i+2] == '*/':
+                    in_multi_comment = False
+                    result.append('  ')
+                    i += 2
+                    continue
+                elif in_multi_comment:
+                    result.append(' ' if char != '\\n' else '\\n')
+                    i += 1
+                    continue
+                
+                # Gestione commenti single-line
+                if not in_single_comment and text[i:i+2] == '//':
+                    in_single_comment = True
+                    result.append('  ')
+                    i += 2
+                    continue
+                elif in_single_comment and char == '\\n':
+                    in_single_comment = False
+                    result.append('\\n')
+                    i += 1
+                    continue
+                elif in_single_comment:
+                    result.append(' ')
+                    i += 1
+                    continue
+            
+            # Gestione stringhe
+            if not in_single_comment and not in_multi_comment:
+                # Verifica escape
+                if i > 0 and text[i-1] == '\\\\':
+                    result.append(' ')
+                    i += 1
+                    continue
+                
+                if char == "'" and not in_double_quote:
+                    in_single_quote = not in_single_quote
+                    result.append(' ')
+                elif char == '"' and not in_single_quote:
+                    in_double_quote = not in_double_quote
+                    result.append(' ')
+                elif in_single_quote or in_double_quote:
+                    result.append(' ' if char != '\\n' else '\\n')
+                else:
+                    result.append(char)
+            else:
+                result.append(' ' if char != '\\n' else '\\n')
+            
+            i += 1
+        
+        return ''.join(result)
+""",
+        "diagnostics_plugin.py": """#!/usr/bin/env python3
+\"\"\"
+Plugin di diagnostica per il PHP Analyzer
+\"\"\"
+import os
+import tkinter as tk
+from tkinter import ttk, scrolledtext
+
+try:
+    from analizzatore_php_light import PluginBase
+except ImportError:
+    try:
+        from analizzatore import PluginBase
+    except ImportError:
+        # Definizione di fallback per IDE
+        class PluginBase:
+            def get_id(self): pass
+            def get_hooks(self): pass
+
+class DiagnosticsPlugin(PluginBase):
+    \"\"\"
+    Plugin di diagnostica per mostrare informazioni sul sistema dei plugin
+    \"\"\"
+    
+    def get_id(self):
+        return "diagnostics_plugin"
+        
+    def get_name(self):
+        return "Diagnostics Plugin"
+        
+    def get_description(self):
+        return "Mostra informazioni di diagnostica sul sistema dei plugin"
+        
+    def get_author(self):
+        return "PHP Analyzer Team"
+        
+    def get_version(self):
+        return "1.0.0"
+        
+    def get_hooks(self):
+        return {
+            'ui_extension': [self.add_diagnostics_button]
+        }
+    
+    def add_diagnostics_button(self, gui, **kwargs):
+        \"\"\"Aggiunge un pulsante per le diagnostiche all'interfaccia\"\"\"
+        # Aggiungi un pulsante nella barra degli strumenti
+        control_frame = gui.root.winfo_children()[0].winfo_children()[0]
+        diag_button = ttk.Button(control_frame, text="Diagnostica", command=lambda: self.show_diagnostics(gui))
+        diag_button.grid(row=0, column=6, padx=5)
+    
+    def show_diagnostics(self, gui):
+        \"\"\"Mostra una finestra con informazioni di diagnostica\"\"\"
+        diag_window = tk.Toplevel(gui.root)
+        diag_window.title("Diagnostica Plugin")
+        diag_window.geometry("700x500")
+        
+        # Crea notebook per le schede
+        notebook = ttk.Notebook(diag_window)
+        notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        # Scheda per info generale
+        general_frame = ttk.Frame(notebook)
+        notebook.add(general_frame, text="Informazioni Generali")
+        
+        # Scheda per i plugin
+        plugins_frame = ttk.Frame(notebook)
+        notebook.add(plugins_frame, text="Plugin Caricati")
+        
+        # Scheda per i file nella cartella plugins
+        files_frame = ttk.Frame(notebook)
+        notebook.add(files_frame, text="File nella cartella plugins")
+        
+        # Popola la scheda generale
+        self._populate_general_info(general_frame, gui)
+        
+        # Popola la scheda plugin
+        self._populate_plugins_info(plugins_frame, gui)
+        
+        # Popola la scheda file
+        self._populate_files_info(files_frame)
+    
+    def _populate_general_info(self, frame, gui):
+        \"\"\"Popola la scheda con informazioni generali\"\"\"
+        info_text = scrolledtext.ScrolledText(frame, wrap=tk.WORD)
+        info_text.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        info_text.insert(tk.END, "=== Informazioni di Sistema ===\\n\\n")
+        
+        # Info sulla directory corrente
+        info_text.insert(tk.END, f"Directory di lavoro: {os.getcwd()}\\n")
+        info_text.insert(tk.END, f"Directory plugins: {os.path.join(os.getcwd(), 'plugins')}\\n\\n")
+        
+        # Info sul Python path
+        info_text.insert(tk.END, "=== Python Path ===\\n")
+        import sys
+        for path in sys.path:
+            info_text.insert(tk.END, f"- {path}\\n")
+        
+        info_text.insert(tk.END, "\\n=== Informazioni sull'analizzatore ===\\n")
+        info_text.insert(tk.END, f"Plugin caricati: {len(gui.analyzer.plugin_manager.plugins)}\\n")
+        
+        # Info sugli hook registrati
+        info_text.insert(tk.END, "\\n=== Hook registrati ===\\n")
+        for hook_name, handlers in gui.analyzer.plugin_manager.hooks.items():
+            info_text.insert(tk.END, f"Hook '{hook_name}': {len(handlers)} handler(s)\\n")
+            for plugin_id, method in handlers:
+                info_text.insert(tk.END, f"  - {plugin_id}.{method.__name__}\\n")
+        
+        info_text.config(state=tk.DISABLED)  # Rendi di sola lettura
+    
+    def _populate_plugins_info(self, frame, gui):
+        \"\"\"Popola la scheda con informazioni sui plugin caricati\"\"\"
+        info_text = scrolledtext.ScrolledText(frame, wrap=tk.WORD)
+        info_text.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        info_text.insert(tk.END, "=== Plugin caricati ===\\n\\n")
+        
+        if not gui.analyzer.plugin_manager.plugins:
+            info_text.insert(tk.END, "Nessun plugin caricato!\\n\\n")
+            info_text.insert(tk.END, "Possibili cause:\\n")
+            info_text.insert(tk.END, "1. La cartella 'plugins' non esiste o è vuota\\n")
+            info_text.insert(tk.END, "2. I file plugin non contengono classi che ereditano da PluginBase\\n")
+            info_text.insert(tk.END, "3. Ci sono errori di sintassi nei file plugin\\n")
+            info_text.insert(tk.END, "4. I plugin hanno dipendenze non soddisfatte\\n\\n")
+            info_text.insert(tk.END, "Consulta la scheda 'File nella cartella plugins' per ulteriori informazioni.")
+        else:
+            for plugin_id, plugin in gui.analyzer.plugin_manager.plugins.items():
+                info_text.insert(tk.END, f"Plugin: {plugin.get_name()} (ID: {plugin_id})\\n")
+                info_text.insert(tk.END, f"Descrizione: {plugin.get_description()}\\n")
+                info_text.insert(tk.END, f"Versione: {plugin.get_version()}\\n")
+                info_text.insert(tk.END, f"Autore: {plugin.get_author()}\\n")
+                
+                # Mostra gli hook implementati
+                hooks = plugin.get_hooks()
+                if hooks:
+                    info_text.insert(tk.END, "Hook implementati:\\n")
+                    for hook_name, methods in hooks.items():
+                        for method in methods:
+                            info_text.insert(tk.END, f"  - {hook_name}: {method.__name__}\\n")
+                else:
+                    info_text.insert(tk.END, "Nessun hook implementato!\\n")
+                
+                # Mostra le dipendenze
+                deps = plugin.get_dependencies()
+                if deps:
+                    info_text.insert(tk.END, "Dipendenze:\\n")
+                    for dep in deps:
+                        info_text.insert(tk.END, f"  - {dep}\\n")
+                
+                info_text.insert(tk.END, "\\n" + "-" * 50 + "\\n\\n")
+        
+        info_text.config(state=tk.DISABLED)  # Rendi di sola lettura
+    
+    def _populate_files_info(self, frame):
+        \"\"\"Popola la scheda con informazioni sui file nella cartella plugins\"\"\"
+        info_text = scrolledtext.ScrolledText(frame, wrap=tk.WORD)
+        info_text.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        plugins_dir = os.path.join(os.getcwd(), 'plugins')
+        
+        info_text.insert(tk.END, f"=== File nella cartella {plugins_dir} ===\\n\\n")
+        
+        if not os.path.exists(plugins_dir):
+            info_text.insert(tk.END, f"La cartella 'plugins' non esiste! Dovrebbe essere in: {plugins_dir}\\n")
+            info_text.insert(tk.END, "Assicurati di creare questa cartella per i tuoi plugin.")
+            return
+        
+        files = os.listdir(plugins_dir)
+        
+        if not files:
+            info_text.insert(tk.END, "La cartella 'plugins' è vuota. Nessun file trovato.\\n")
+            return
+        
+        python_files = [f for f in files if f.endswith('.py') and not f.startswith('__')]
+        other_files = [f for f in files if not (f.endswith('.py') and not f.startswith('__'))]
+        
+        if python_files:
+            info_text.insert(tk.END, "File Python trovati:\\n")
+            for i, file in enumerate(python_files, 1):
+                file_path = os.path.join(plugins_dir, file)
+                file_size = os.path.getsize(file_path)
+                file_mod = os.path.getmtime(file_path)
+                import time
+                mod_time = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(file_mod))
+                
+                info_text.insert(tk.END, f"{i}. {file}\\n")
+                info_text.insert(tk.END, f"   - Dimensione: {file_size} byte\\n")
+                info_text.insert(tk.END, f"   - Ultima modifica: {mod_time}\\n")
+                
+                # Analizza il contenuto del file
+                try:
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        content = f.read()
+                    
+                    # Controlla se il file importa PluginBase
+                    if "PluginBase" in content:
+                        info_text.insert(tk.END, f"   - Importa PluginBase: Sì\\n")
+                    else:
+                        info_text.insert(tk.END, f"   - Importa PluginBase: No (problema!)\\n")
+                    
+                    # Controlla se ha classi che ereditano da PluginBase
+                    if "class" in content and "(PluginBase)" in content:
+                        info_text.insert(tk.END, f"   - Classe che eredita da PluginBase: Sì\\n")
+                    else:
+                        info_text.insert(tk.END, f"   - Classe che eredita da PluginBase: No (problema!)\\n")
+                    
+                    # Controlla se implementa get_hooks
+                    if "def get_hooks" in content:
+                        info_text.insert(tk.END, f"   - Implementa get_hooks: Sì\\n")
+                    else:
+                        info_text.insert(tk.END, f"   - Implementa get_hooks: No (problema!)\\n")
+                    
+                except Exception as e:
+                    info_text.insert(tk.END, f"   - Errore nell'analisi del file: {str(e)}\\n")
+                
+                info_text.insert(tk.END, "\\n")
+        else:
+            info_text.insert(tk.END, "Nessun file Python valido trovato nella cartella 'plugins'.\\n\\n")
+        
+        if other_files:
+            info_text.insert(tk.END, "Altri file e cartelle trovati:\\n")
+            for i, file in enumerate(other_files, 1):
+                info_text.insert(tk.END, f"{i}. {file}\\n")
+        
+        info_text.config(state=tk.DISABLED)  # Rendi di sola lettura
+"""
+    }
+
+    for plugin_name, plugin_content in expected_plugins.items():
+        plugin_path = os.path.join(plugins_dir, plugin_name)
+        if not os.path.exists(plugin_path):
+            try:
+                with open(plugin_path, 'w', encoding='utf-8') as f:
+                    f.write(plugin_content)
+                print(f"Creato file plugin mancante: {plugin_path}")
+            except Exception as e:
+                print(f"Impossibile creare il file plugin {plugin_name}: {str(e)}")
+    
+    # Crea oggetto config vuoto se non esiste
+    config_path = "plugin_config.json"
+    if not os.path.exists(config_path):
+        try:
+            with open(config_path, 'w', encoding='utf-8') as f:
+                f.write("{}")
+            print(f"Creato file di configurazione vuoto: {config_path}")
+        except Exception as e:
+            print(f"Impossibile creare il file di configurazione: {str(e)}")
     
     root = tk.Tk()
     app = PHPAnalyzerGUI(root)
