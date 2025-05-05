@@ -147,69 +147,9 @@ class PluginManager:
             self._register_plugin_hooks(plugin_id, plugin)
         
         print(f"=== Caricamento completato: {len(self.plugins)} plugin ===\n")
-    
-def _load_plugin_from_file(self, filepath):
-    """Carica un plugin da un file Python"""
-    try:
-        module_name = os.path.basename(filepath).replace('.py', '')
-        print(f"Tentativo di caricamento di {module_name} da {filepath}")
-        
-        # Carica il modulo
-        spec = importlib.util.spec_from_file_location(module_name, filepath)
-        if spec is None or spec.loader is None:
-            print(f"Impossibile caricare il modulo {module_name} da {filepath}")
-            return
-        
-        module = importlib.util.module_from_spec(spec)
-        
-        # Imposta esplicitamente le classi necessarie
-        print("Impostazione delle classi nel modulo")
-        module.PluginBase = PluginBase
-        module.SyntaxError = SyntaxError
-        
-        # Esegui il modulo
-        try:
-            print("Esecuzione del modulo")
-            spec.loader.exec_module(module)
-            print("Modulo eseguito con successo")
-        except Exception as e:
-            print(f"Errore nell'esecuzione del modulo {module_name}: {e}")
-            import traceback
-            traceback.print_exc()
-            return
-        
-        # Elenca tutte le classi nel modulo
-        print(f"Classi in {module_name}:")
-        for attr_name in dir(module):
-            try:
-                attr = getattr(module, attr_name)
-                if isinstance(attr, type):
-                    print(f"  - {attr_name}: {attr.__bases__}")
-            except:
-                continue
-                return
-            
-            # Crea un'istanza di ogni plugin trovato
-            for plugin_class in plugin_classes:
-                try:
-                    plugin = plugin_class()
-                    plugin_id = plugin.get_id()
-                    
-                    # Inizializza la configurazione del plugin se non esiste
-                    if plugin_id not in self.plugin_configs:
-                        self.plugin_configs[plugin_id] = plugin.get_config_defaults()
-                    
-                    # Aggiungi il plugin alla collezione
-                    self.plugins[plugin_id] = plugin
-                    print(f"Caricato plugin: {plugin.get_name()} (ID: {plugin_id})")
-                except Exception as e:
-                    print(f"Errore nell'istanziare il plugin {plugin_class.__name__}: {e}")
-        
-        except Exception as e:
-            print(f"Errore nel caricamento del plugin da {filepath}: {e}")
-            import traceback
-            traceback.print_exc()
-    
+
+
+
     def _register_plugin_hooks(self, plugin_id, plugin):
         """Registra gli hook di un plugin"""
         hooks = plugin.get_hooks()
