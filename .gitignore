@@ -1,0 +1,9 @@
+# File di configurazione sensibili
+.env
+.env.local
+.env.*.local
+
+# Directory di storage
+# Directory di storage
+/.cache/
+/plugins/__pycache__/
