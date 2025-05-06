@@ -73,20 +73,37 @@ class PluginManager:
     
     def _load_plugin_from_file(self, filepath: str):
         """Carica un plugin da un file Python"""
+        print(f"Tentativo di caricare il plugin da: {filepath}")
         try:
             # Ottieni il nome del modulo dal percorso del file
             module_name = os.path.basename(filepath).replace('.py', '')
+            print(f"  Nome modulo: {module_name}")
             
             # Carica il modulo dinamicamente
             spec = importlib.util.spec_from_file_location(module_name, filepath)
+            
             module = importlib.util.module_from_spec(spec)
+            print(f"  Modulo creato: {module.__name__}")
+            
             spec.loader.exec_module(module)
+            print(f"  Modulo eseguito")
+            
+             # Elenca tutte le definizioni nel modulo
+            all_attrs = dir(module)
+            print(f"  Attributi nel modulo: {', '.join(all_attrs)}")
             
             # Cerca classi che ereditano da PluginBase
-            for attr_name in dir(module):
+            plugin_classes_found = False
+            for attr_name in all_attrs:
                 attr = getattr(module, attr_name)
-                if isinstance(attr, type) and issubclass(attr, PluginBase) and attr != PluginBase:
+                print(f"  Verifica: {attr_name} - è classe: {isinstance(attr, type)}")
+                
+                if isinstance(attr, type):
+                    is_plugin = issubclass(attr, PluginBase)
+                    print(f"  {attr_name} è subclass di PluginBase: {is_plugin}")
+                    
                     # Crea un'istanza del plugin
+                    print(f"  Creazione istanza di {attr_name}")
                     plugin = attr()
                     plugin_id = plugin.get_id()
                     
