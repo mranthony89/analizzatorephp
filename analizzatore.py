@@ -96,7 +96,45 @@ class PluginManager:
                 print(f"  - {other_file}")
         
         print("=== Fine diagnostica ===\n")
+    
+    def _load_plugin_from_file(self, filepath):
+        """Carica un plugin da un file Python"""
+        plugin_name = os.path.splitext(os.path.basename(filepath))[0]
+        spec = importlib.util.spec_from_file_location(plugin_name, filepath)
         
+        if spec is None:
+            raise ImportError(f"Impossibile caricare il plugin da {filepath}")
+            
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[plugin_name] = module
+        
+        try:
+            spec.loader.exec_module(module)
+        except Exception as e:
+            raise ImportError(f"Errore durante l'esecuzione del modulo {plugin_name}: {e}")
+        
+        # Cerca tutte le classi che ereditano da PluginBase
+        for name, obj in module.__dict__.items():
+            if (isinstance(obj, type) and 
+                issubclass(obj, PluginBase) and 
+                obj is not PluginBase):
+                
+                try:
+                    plugin_instance = obj()
+                    plugin_id = plugin_instance.get_id()
+                    
+                    if plugin_id in self.plugins:
+                        raise ValueError(f"Plugin ID {plugin_id} già esistente")
+                    
+                    self.plugins[plugin_id] = plugin_instance
+                    print(f"Plugin caricato: {plugin_id}")
+                    return
+                
+                except Exception as e:
+                    raise RuntimeError(f"Errore durante l'inizializzazione del plugin {name}: {e}")
+        
+        raise RuntimeError(f"Nessuna classe Plugin valida trovata in {filepath}")
+    
     def _load_config(self):
         """Carica la configurazione dei plugin dal file JSON"""
         try:
@@ -138,17 +176,18 @@ class PluginManager:
         for filename in os.listdir(self.plugins_dir):
             if filename.endswith('.py') and not filename.startswith('__'):
                 try:
-                    self._load_plugin_from_file(os.path.join(self.plugins_dir, filename))
+                    filepath = os.path.join(self.plugins_dir, filename)
+                    self._load_plugin_from_file(filepath)
                 except Exception as e:
                     print(f"Errore nel caricamento del plugin {filename}: {e}")
+                    import traceback
+                    traceback.print_exc()
         
         # Registra gli hook di tutti i plugin
         for plugin_id, plugin in self.plugins.items():
             self._register_plugin_hooks(plugin_id, plugin)
         
         print(f"=== Caricamento completato: {len(self.plugins)} plugin ===\n")
-
-
 
     def _register_plugin_hooks(self, plugin_id, plugin):
         """Registra gli hook di un plugin"""

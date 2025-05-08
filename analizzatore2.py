@@ -71,80 +71,6 @@ class PluginManager:
         # Carica la configurazione dei plugin
         self._load_config()
     
-    def _load_plugin_from_file(self, filepath: str):
-        """Carica un plugin da un file Python"""
-        print(f"Tentativo di caricare il plugin da: {filepath}")
-        try:
-            # Ottieni il nome del modulo dal percorso del file
-            module_name = os.path.basename(filepath).replace('.py', '')
-            print(f"  Nome modulo: {module_name}")
-            
-            # Carica il modulo dinamicamente
-            spec = importlib.util.spec_from_file_location(module_name, filepath)
-            
-            module = importlib.util.module_from_spec(spec)
-            print(f"  Modulo creato: {module.__name__}")
-            
-            spec.loader.exec_module(module)
-            print(f"  Modulo eseguito")
-            
-             # Elenca tutte le definizioni nel modulo
-            all_attrs = dir(module)
-            print(f"  Attributi nel modulo: {', '.join(all_attrs)}")
-            
-            # Cerca classi che ereditano da PluginBase
-            plugin_classes_found = False
-            for attr_name in all_attrs:
-                attr = getattr(module, attr_name)
-                print(f"  Verifica: {attr_name} - è classe: {isinstance(attr, type)}")
-                
-                if isinstance(attr, type):
-                    is_plugin = issubclass(attr, PluginBase)
-                    print(f"  {attr_name} è subclass di PluginBase: {is_plugin}")
-                    
-                    # Crea un'istanza del plugin
-                    print(f"  Creazione istanza di {attr_name}")
-                    plugin = attr()
-                    plugin_id = plugin.get_id()
-                    
-                    # Verifica dipendenze
-                    deps = plugin.get_dependencies()
-                    missing_deps = [dep for dep in deps if dep not in self.plugins]
-                    if missing_deps:
-                        print(f"Plugin {plugin_id} ha dipendenze non soddisfatte: {', '.join(missing_deps)}")
-                        continue
-                    
-                    # Aggiungi il plugin all'elenco
-                    self.plugins[plugin_id] = plugin
-                    print(f"Plugin caricato: {plugin.get_name()} (ID: {plugin_id})")
-                    
-                    # Inizializza la configurazione se non esiste
-                    if plugin_id not in self.plugin_configs:
-                        self.plugin_configs[plugin_id] = plugin.get_config_defaults()
-                        self._save_config()
-                    
-        except Exception as e:
-            import traceback
-            print(f"Errore nel caricamento del plugin {os.path.basename(filepath)}: {e}")
-            traceback.print_exc()
-        
-    def call_hook(self, hook_name, *args, **kwargs):
-        """Esegue tutti i gestori registrati per un hook"""
-        results = []
-        
-        if hook_name in self.hooks:
-            for plugin_id, method in self.hooks[hook_name]:
-                try:
-                    # Passa la configurazione del plugin come argomento
-                    kwargs['plugin_config'] = self.get_plugin_config(plugin_id)
-                    result = method(*args, **kwargs)
-                    if result is not None:
-                        results.append(result)
-                except Exception as e:
-                    print(f"Errore nell'esecuzione dell'hook {hook_name} del plugin {plugin_id}: {e}")
-        
-        return results
-    
     def diagnose_plugins_directory(self):
         """Stampa informazioni diagnostiche sulla directory dei plugin"""
         print(f"\n=== Diagnostica directory plugin ===")
@@ -222,6 +148,8 @@ class PluginManager:
         
         print(f"=== Caricamento completato: {len(self.plugins)} plugin ===\n")
 
+
+
     def _register_plugin_hooks(self, plugin_id, plugin):
         """Registra gli hook di un plugin"""
         hooks = plugin.get_hooks()
@@ -241,6 +169,23 @@ class PluginManager:
         self.plugin_configs[plugin_id] = config
         self._save_config()
     
+    def call_hook(self, hook_name, *args, **kwargs):
+        """Esegue tutti i gestori registrati per un hook"""
+        results = []
+        
+        if hook_name in self.hooks:
+            for plugin_id, method in self.hooks[hook_name]:
+                try:
+                    # Passa la configurazione del plugin come argomento
+                    kwargs['plugin_config'] = self.get_plugin_config(plugin_id)
+                    result = method(*args, **kwargs)
+                    if result is not None:
+                        results.append(result)
+                except Exception as e:
+                    print(f"Errore nell'esecuzione dell'hook {hook_name} del plugin {plugin_id}: {e}")
+        
+        return results
+
 class PHPAnalyzer:
     def __init__(self):
         self.errors = []
