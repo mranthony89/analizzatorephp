@@ -44,7 +44,7 @@ class DiagnosticsPlugin(PluginBase):
         # Aggiungi un pulsante nella barra degli strumenti
         control_frame = gui.root.winfo_children()[0].winfo_children()[0]
         diag_button = ttk.Button(control_frame, text="Diagnostica", command=lambda: self.show_diagnostics(gui))
-        diag_button.grid(row=0, column=6, padx=5)
+        diag_button.grid(row=0, column=7, padx=5)
     
     def show_diagnostics(self, gui):
         """Mostra una finestra con informazioni di diagnostica"""

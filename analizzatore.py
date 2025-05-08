@@ -803,8 +803,6 @@ class PHPAnalyzerGUI:
         # Pulsante di ricarica plugin
         ttk.Button(control_frame, text="Ricarica Plugin", command=self.reload_plugins).grid(row=0, column=4, padx=5)
         
-        # Nella funzione create_widgets, aggiungi questo pulsante al control_frame
-        ttk.Button(control_frame, text="Diagnostica Plugin", command=self.diagnose_plugins).grid(row=0, column=5, padx=5)
         
         # Label per mostrare il file/directory corrente
         self.current_path_var = tk.StringVar(value="Nessun file/directory selezionato")
