@@ -22,6 +22,7 @@ class SyntaxError:
     error_type: str
     description: str
     suggestion: str
+    category: str = "Generico"  # Categoria predefinita
 
 class PluginBase:
     """Classe base per tutti i plugin"""
@@ -240,12 +241,12 @@ class PHPAnalyzer:
                 lines = file.readlines()
             
             # Esegui controlli base
-            self._check_php_tags(lines)
-            self._check_quotes(lines)
-            self._check_semicolons(lines)
-            self._check_function_syntax(lines)
-            self._check_array_syntax(lines)
-            self._check_variable_syntax(lines)
+            #self._check_php_tags(lines)
+            #self._check_quotes(lines)
+            #self._check_semicolons(lines)
+            #self._check_function_syntax(lines)
+            #self._check_array_syntax(lines)
+            #self._check_variable_syntax(lines)
             
             # Esegui controlli tramite plugin
             plugin_errors = self.plugin_manager.call_hook('syntax_check', filepath=filepath, lines=lines)
@@ -974,6 +975,8 @@ class PHPAnalyzerGUI:
         self.error_text.insert(tk.END, f"{'='*80}\n\n", "filename")
         
         for error in errors:
+            category = getattr(error, 'category', "Generico")
+            self.error_text.insert(tk.END, f"[{category}] ", "category")
             self.error_text.insert(tk.END, f"Riga {error.line_number}: ", "error")
             self.error_text.insert(tk.END, f"{error.error_type}\n", "error")
             self.error_text.insert(tk.END, f"   Codice: {error.line_content}\n")

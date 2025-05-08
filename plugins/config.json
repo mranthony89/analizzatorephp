@@ -1,0 +1,8 @@
+{
+    "parentesi_syntax_checker": {
+        "enabled": true
+    },
+    "php_tags_checker": {
+        "enabled": true
+    }
+}
