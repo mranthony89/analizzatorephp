@@ -56,7 +56,7 @@ class ParentesiSyntaxChecker(PluginBase):
         return "1.1.0"
         
     def get_author(self):
-        return "PHP Analyzer Team"
+        return "Proietti House & Claude"
         
     def get_hooks(self):
         return {

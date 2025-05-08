@@ -23,13 +23,13 @@ class DiagnosticsPlugin(PluginBase):
         return "diagnostics_plugin"
         
     def get_name(self):
-        return "Diagnostics Plugin"
+        return "Diagnostica Plugin"
         
     def get_description(self):
         return "Mostra informazioni di diagnostica sul sistema dei plugin"
         
     def get_author(self):
-        return "PHP Analyzer Team"
+        return "Proietti House & Claude"
         
     def get_version(self):
         return "1.0.0"
