@@ -12,12 +12,15 @@
         "enabled": false
     },
     "array_syntax_checker": {
-        "enabled": false
+        "enabled": true
     },
     "variable_syntax_checker": {
         "enabled": false
     },
     "quotes_checker": {
+        "enabled": false
+    },
+    "semicolon_checker": {
         "enabled": false
     }
 }

@@ -216,6 +216,12 @@ class PluginManager:
         if hook_name in self.hooks:
             for plugin_id, method in self.hooks[hook_name]:
                 try:
+                    # Controlla se il plugin è abilitato
+                    plugin_config = self.get_plugin_config(plugin_id) or {}
+                    if not plugin_config.get("enabled", True):
+                    # Plugin disabilitato, salta
+                        continue
+                
                     # Passa la configurazione del plugin come argomento
                     plugin_config = self.get_plugin_config(plugin_id) or {}
                     kwargs['plugin_config'] = self.get_plugin_config(plugin_id)
