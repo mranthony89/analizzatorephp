@@ -718,80 +718,80 @@ class PHPAnalyzer:
                                     f"La variabile '{word}' non ha il simbolo $",
                                     f"Cambia '{word}' in '${word}'"
                                 ))
-def fix_file(self, filepath: str, errors: List[SyntaxError]) -> bool:
-    """Corregge automaticamente gli errori nel file"""
-    try:
-        with open(filepath, 'r', encoding='utf-8') as file:
-            lines = file.readlines()
-        
-        # Tieni traccia se sono state apportate modifiche
-        modifiche_effettuate = False
-        
-        # Ordina gli errori per linea (dal basso verso l'alto per evitare offset)
-        errors.sort(key=lambda x: x.line_number, reverse=True)
-        
-        for error in errors:
-            line_idx = error.line_number - 1
-            if line_idx < 0 or line_idx >= len(lines):
-                continue  # Ignora errori con numeri di riga invalidi
+    def fix_file(self, filepath: str, errors: List[SyntaxError]) -> bool:
+        """Corregge automaticamente gli errori nel file"""
+        try:
+            with open(filepath, 'r', encoding='utf-8') as file:
+                lines = file.readlines()
+            
+            # Tieni traccia se sono state apportate modifiche
+            modifiche_effettuate = False
+            
+            # Ordina gli errori per linea (dal basso verso l'alto per evitare offset)
+            errors.sort(key=lambda x: x.line_number, reverse=True)
+            
+            for error in errors:
+                line_idx = error.line_number - 1
+                if line_idx < 0 or line_idx >= len(lines):
+                    continue  # Ignora errori con numeri di riga invalidi
+                    
+                line = lines[line_idx]
                 
-            line = lines[line_idx]
-            
-            # Correggi gli errori in base al tipo
-            if error.error_type == "Punto e virgola mancante":
-                if not line.strip().endswith(';'):
-                    lines[line_idx] = line.rstrip() + ';\n'
-                    modifiche_effettuate = True
-            
-            elif error.error_type == "Variabile senza $":
-                var_match = re.search(r"La variabile '(\w+)'", error.description)
-                if var_match:
-                    var_name = var_match.group(1)
-                    # Assicurati di sostituire solo la variabile e non parti di altre parole
-                    pattern = r'\b' + re.escape(var_name) + r'\b(?!\$)'
-                    new_line = re.sub(pattern, f'${var_name}', line)
-                    if new_line != line:
-                        lines[line_idx] = new_line
+                # Correggi gli errori in base al tipo
+                if error.error_type == "Punto e virgola mancante":
+                    if not line.strip().endswith(';'):
+                        lines[line_idx] = line.rstrip() + ';\n'
                         modifiche_effettuate = True
-            
-            elif error.error_type == "Virgoletta singola non chiusa" or error.error_type == "Virgoletta doppia non chiusa":
-                # Determina il tipo di virgoletta
-                quote_type = "'" if "singola" in error.error_type else '"'
-                if line.count(quote_type) % 2 == 1:  # Se c'è un numero dispari di virgolette
-                    lines[line_idx] = line.rstrip() + quote_type + ";\n"
-                    modifiche_effettuate = True
-            
-            elif error.error_type == "Virgola mancante in array":
-                # Cerca due elementi adiacenti senza virgola
-                match = re.search(r'(["\'\w])\s+(["\'\w])', line)
-                if match:
-                    pos = match.start() + 1
-                    lines[line_idx] = line[:pos] + ',' + line[pos:]
-                    modifiche_effettuate = True
-            
-            elif error.error_type == "Parentesi non chiusa":
-                bracket_match = re.search(r"'(.)'", error.description)
-                if bracket_match:
-                    opening_bracket = bracket_match.group(1)
-                    closing_bracket = {'(': ')', '{': '}', '[': ']'}.get(opening_bracket)
-                    if closing_bracket:
-                        lines[line_idx] = line.rstrip() + closing_bracket + "\n"
+                
+                elif error.error_type == "Variabile senza $":
+                    var_match = re.search(r"La variabile '(\w+)'", error.description)
+                    if var_match:
+                        var_name = var_match.group(1)
+                        # Assicurati di sostituire solo la variabile e non parti di altre parole
+                        pattern = r'\b' + re.escape(var_name) + r'\b(?!\$)'
+                        new_line = re.sub(pattern, f'${var_name}', line)
+                        if new_line != line:
+                            lines[line_idx] = new_line
+                            modifiche_effettuate = True
+                
+                elif error.error_type == "Virgoletta singola non chiusa" or error.error_type == "Virgoletta doppia non chiusa":
+                    # Determina il tipo di virgoletta
+                    quote_type = "'" if "singola" in error.error_type else '"'
+                    if line.count(quote_type) % 2 == 1:  # Se c'è un numero dispari di virgolette
+                        lines[line_idx] = line.rstrip() + quote_type + ";\n"
                         modifiche_effettuate = True
+                
+                elif error.error_type == "Virgola mancante in array":
+                    # Cerca due elementi adiacenti senza virgola
+                    match = re.search(r'(["\'\w])\s+(["\'\w])', line)
+                    if match:
+                        pos = match.start() + 1
+                        lines[line_idx] = line[:pos] + ',' + line[pos:]
+                        modifiche_effettuate = True
+                
+                elif error.error_type == "Parentesi non chiusa":
+                    bracket_match = re.search(r"'(.)'", error.description)
+                    if bracket_match:
+                        opening_bracket = bracket_match.group(1)
+                        closing_bracket = {'(': ')', '{': '}', '[': ']'}.get(opening_bracket)
+                        if closing_bracket:
+                            lines[line_idx] = line.rstrip() + closing_bracket + "\n"
+                            modifiche_effettuate = True
+                
+                # Aggiungi altri tipi di errori qui...
             
-            # Aggiungi altri tipi di errori qui...
-        
-        # Scrivi il file corretto solo se sono state apportate modifiche
-        if modifiche_effettuate:
-            with open(filepath, 'w', encoding='utf-8') as file:
-                file.writelines(lines)
-            return True
-        else:
-            print(f"Nessuna correzione disponibile per gli errori trovati in {filepath}")
+            # Scrivi il file corretto solo se sono state apportate modifiche
+            if modifiche_effettuate:
+                with open(filepath, 'w', encoding='utf-8') as file:
+                    file.writelines(lines)
+                return True
+            else:
+                print(f"Nessuna correzione disponibile per gli errori trovati in {filepath}")
+                return False
+                
+        except Exception as e:
+            print(f"Errore durante la correzione del file: {e}")
             return False
-            
-    except Exception as e:
-        print(f"Errore durante la correzione del file: {e}")
-        return False
 
         
 class PHPAnalyzerGUI:
