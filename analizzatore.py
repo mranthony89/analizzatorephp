@@ -830,6 +830,9 @@ class PHPAnalyzerGUI:
         self.error_text = scrolledtext.ScrolledText(main_frame, wrap=tk.WORD, width=100, height=30)
         self.error_text.grid(row=2, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
         
+        # Tag per la formattazione del testo (aggiungi questa riga insieme alle altre tag già presenti)
+        self.error_text.tag_configure("category_header", foreground="dark blue", font=("TkDefaultFont", 10, "bold"))
+        
         # Tag per la formattazione del testo
         self.error_text.tag_configure("error", foreground="red")
         self.error_text.tag_configure("suggestion", foreground="green")
@@ -990,16 +993,34 @@ class PHPAnalyzerGUI:
         self.error_text.insert(tk.END, f"\n{'='*80}\n", "filename")
         self.error_text.insert(tk.END, f"File: {filepath}\n", "filename")
         self.error_text.insert(tk.END, f"{'='*80}\n\n", "filename")
-        
+    
+        # Raggruppa errori per categoria
+        errors_by_category = {}
         for error in errors:
             category = getattr(error, 'category', "Generico")
-            self.error_text.insert(tk.END, f"[{category}] ", "category")
-            self.error_text.insert(tk.END, f"Riga {error.line_number}: ", "error")
-            self.error_text.insert(tk.END, f"{error.error_type}\n", "error")
-            self.error_text.insert(tk.END, f"   Codice: {error.line_content}\n")
-            self.error_text.insert(tk.END, f"   Problema: {error.description}\n", "info")
-            self.error_text.insert(tk.END, f"   Suggerimento: {error.suggestion}\n\n", "suggestion")
+            if category not in errors_by_category:
+                errors_by_category[category] = []
+            errors_by_category[category].append(error)
     
+        # Tag per le categorie se non esistono già
+        if not hasattr(self.error_text, 'category_tags_created'):
+            self.error_text.tag_configure("category_header", foreground="dark blue", font=("TkDefaultFont", 10, "bold"))
+            self.error_text.category_tags_created = True
+    
+        # Mostra errori raggruppati per categoria
+        for category, category_errors in errors_by_category.items():
+            self.error_text.insert(tk.END, f"\n== {category} ({len(category_errors)}) ==\n", "category_header")
+        
+            for error in category_errors:
+                self.error_text.insert(tk.END, f"Riga {error.line_number}: ", "error")
+                self.error_text.insert(tk.END, f"{error.error_type}\n", "error")
+                self.error_text.insert(tk.END, f"   Codice: {error.line_content}\n")
+                self.error_text.insert(tk.END, f"   Problema: {error.description}\n", "info")
+                self.error_text.insert(tk.END, f"   Suggerimento: {error.suggestion}\n\n", "suggestion")
+    
+        # Aggiungi una riga vuota alla fine
+        self.error_text.insert(tk.END, "\n")
+
     def display_no_errors(self, filepath):
         self.error_text.insert(tk.END, f"\n✓ Nessun errore trovato in: {filepath}\n", "suggestion")
     
