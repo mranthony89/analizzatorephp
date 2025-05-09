@@ -217,8 +217,19 @@ class PluginManager:
             for plugin_id, method in self.hooks[hook_name]:
                 try:
                     # Passa la configurazione del plugin come argomento
+                    plugin_config = self.get_plugin_config(plugin_id) or {}
                     kwargs['plugin_config'] = self.get_plugin_config(plugin_id)
                     result = method(*args, **kwargs)
+                    
+                             # Se il risultato è una lista di SyntaxError, aggiungi la categoria
+                    if result and isinstance(result, list) and all(isinstance(err, SyntaxError) for err in result):
+                        plugin = self.plugins.get(plugin_id)
+                    if plugin:
+                        plugin_name = plugin.get_name()
+                        for err in result:
+                            if not hasattr(err, 'category') or not err.category or err.category == "Generico":
+                                err.category = plugin_name
+                    
                     if result is not None:
                         results.append(result)
                 except Exception as e:

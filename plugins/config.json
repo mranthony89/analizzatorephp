@@ -1,8 +1,23 @@
 {
     "parentesi_syntax_checker": {
-        "enabled": true
+        "enabled": false
     },
     "php_tags_checker": {
-        "enabled": true
+        "enabled": false
+    },
+    "sicurezza_checker": {
+        "enabled": false
+    },
+    "function_syntax_checker": {
+        "enabled": false
+    },
+    "array_syntax_checker": {
+        "enabled": false
+    },
+    "variable_syntax_checker": {
+        "enabled": false
+    },
+    "quotes_checker": {
+        "enabled": false
     }
 }
