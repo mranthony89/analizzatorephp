@@ -53,7 +53,7 @@ class ParentesiSyntaxChecker(PluginBase):
         return "Controlla la corretta apertura e chiusura di parentesi, graffe e quadre nei file PHP"
         
     def get_version(self):
-        return "1.1.0"
+        return "2.0.0"
         
     def get_author(self):
         return "Proietti House & Claude"
@@ -81,7 +81,7 @@ class ParentesiSyntaxChecker(PluginBase):
                 "parentesi_chiusa_senza_apertura": "error"
             },
             "custom_rules": {
-                "max_nesting_depth": 5
+                "max_nesting_depth": 7
             }
         }
         
@@ -166,7 +166,7 @@ class ParentesiSyntaxChecker(PluginBase):
             ))
         
         # Controlla nidificazione eccessiva
-        max_nesting_allowed = config.get("custom_rules", {}).get("max_nesting_depth", 5)
+        max_nesting_allowed = config.get("custom_rules", {}).get("max_nesting_depth", 7)
         if max_nesting > max_nesting_allowed:
             errors.append(SyntaxError(
                 1,  # Mettiamo come prima riga per semplicità
