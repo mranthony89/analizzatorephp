@@ -99,10 +99,13 @@ class SemicolonChecker(PluginBase):
                 in_double = not in_double
                 
         return in_single or in_double
-    
+
     def check_semicolons(self, filepath: str, lines: List[str], plugin_config=None, **kwargs) -> List[SyntaxError]:
-        """Controlla i punti e virgola mancanti"""
+        """Controlla i punti e virgola mancanti - versione migliorata per stringhe multi-riga"""
         errors = []
+        in_multiline_string = False
+        multiline_string_char = None
+        multiline_start_line = 0
         
         for i, line in enumerate(lines, 1):
             # Se siamo in un blocco HTML, salta
@@ -124,8 +127,28 @@ class SemicolonChecker(PluginBase):
             # Ignora linee vuote
             if not stripped:
                 continue
+            
+            # NUOVO: Gestione stringhe multi-riga
+            # Controlla se inizia una stringa multi-riga
+            if not in_multiline_string:
+                multiline_match = self._check_multiline_string_start(stripped)
+                if multiline_match:
+                    in_multiline_string = True
+                    multiline_string_char = multiline_match
+                    multiline_start_line = i
+                    continue  # Non controllare questa riga per punto e virgola
+            else:
+                # Siamo in una stringa multi-riga, controlla se finisce
+                if self._check_multiline_string_end(stripped, multiline_string_char):
+                    in_multiline_string = False
+                    multiline_string_char = None
+                    # Non controllare questa riga per punto e virgola se finisce con ");
+                    if stripped.endswith('");') or stripped.endswith("');"):
+                        continue
+                else:
+                    continue  # Siamo ancora dentro la stringa multi-riga
                 
-            # Verifica se stiamo dentro echo/print di HTML multilinea
+            # Verifica se stiamo dentro echo/print di HTML multilinea (logica originale)
             if i > 1:
                 prev_line = lines[i-2].strip()
                 if (prev_line.startswith('echo') or prev_line.startswith('print')) and prev_line.endswith("'") and not prev_line.endswith("';"):
@@ -199,3 +222,33 @@ class SemicolonChecker(PluginBase):
                 ))
         
         return errors
+
+    def _check_multiline_string_start(self, line: str) -> str:
+        """Controlla se la linea inizia una stringa multi-riga e ritorna il carattere di virgolette"""
+        # Pattern per riconoscere l'inizio di stringhe multi-riga
+        patterns = [
+            # $var = $obj->method("
+            (r'^\$\w+\s*=\s*\$\w+\s*->\s*\w+\s*\(\s*"$', '"'),
+            (r'^\$\w+\s*=\s*\$\w+\s*->\s*\w+\s*\(\s*\'$', "'"),
+            # $var = function("
+            (r'^\$\w+\s*=\s*\w+\s*\(\s*"$', '"'),
+            (r'^\$\w+\s*=\s*\w+\s*\(\s*\'$', "'"),
+            # Varianti con spazi
+            (r'^\$\w+\s*=\s*\$\w+\s*->\s*\w+\s*\(\s*"\s*$', '"'),
+            (r'^\$\w+\s*=\s*\$\w+\s*->\s*\w+\s*\(\s*\'\s*$', "'"),
+        ]
+        
+        for pattern, quote_char in patterns:
+            if re.match(pattern, line):
+                return quote_char
+        
+        return None
+
+    def _check_multiline_string_end(self, line: str, expected_quote: str) -> bool:
+        """Controlla se la linea termina una stringa multi-riga"""
+        if expected_quote == '"':
+            return line.endswith('");') or line.endswith('" );') or line.endswith('")') 
+        elif expected_quote == "'":
+            return line.endswith("');") or line.endswith("' );") or line.endswith("')")
+        
+        return False

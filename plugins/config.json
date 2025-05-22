@@ -1,26 +1,33 @@
 {
     "parentesi_syntax_checker": {
-        "enabled": false
+        "enabled": true
     },
     "php_tags_checker": {
-        "enabled": false
+        "enabled": true
     },
     "sicurezza_checker": {
         "enabled": false
     },
     "function_syntax_checker": {
-        "enabled": false
-    },
-    "array_syntax_checker": {
         "enabled": true
     },
+    "array_syntax_checker": {
+        "enabled": true,
+        "ignore_concatenations": true,
+        "strict_array_only": true
+    },
     "variable_syntax_checker": {
-        "enabled": false
+        "enabled": true,
+        "ignore_html_attributes": true,
+        "ignore_in_echo": true
+
     },
     "quotes_checker": {
-        "enabled": false
+        "enabled": true,
+        "ignore_sql_queries": true,
+        "allow_multiline_strings": true
     },
     "semicolon_checker": {
-        "enabled": false
+        "enabled": true
     }
 }

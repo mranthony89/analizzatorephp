@@ -145,9 +145,17 @@ class QuotesChecker(PluginBase):
                         string_char = None
             
             # Se la stringa non è chiusa alla fine della riga, potrebbe essere multilinea
-            # Verifica se è un caso valido di stringa multilinea (es. echo con HTML)
+            # Verifica se è un caso valido di stringa multilinea
             if in_string and i == string_start_line:
-                # Controlla se è un echo/print che apre una stringa multilinea
+                # NUOVO: Verifica se è una query SQL
+                if self._is_sql_query(line):
+                    continue  # Non segnalare errore per query SQL
+                
+                # NUOVO: Verifica se è un echo/print con HTML multilinea
+                if self._is_multiline_echo_or_print(line):
+                    continue  # Non segnalare errore per echo/print multilinea
+                
+                # Controlla se è un echo/print che apre una stringa multilinea (logica originale)
                 if re.match(r'^\s*(echo|print)\s+["\']', line.strip()):
                     # È probabilmente una stringa multilinea valida, non segnalare errore
                     continue
@@ -162,3 +170,43 @@ class QuotesChecker(PluginBase):
                     ))
         
         return errors
+
+    def _is_sql_query(self, line: str) -> bool:
+        """Verifica se la linea contiene una query SQL"""
+        # Lista delle parole chiave SQL più comuni
+        sql_keywords = [
+            'SELECT', 'INSERT', 'UPDATE', 'DELETE', 'FROM', 'WHERE', 'JOIN', 
+            'INNER JOIN', 'LEFT JOIN', 'RIGHT JOIN', 'ORDER BY', 'GROUP BY',
+            'HAVING', 'UNION', 'CREATE', 'ALTER', 'DROP', 'INDEX'
+        ]
+        
+        line_upper = line.upper().strip()
+        
+        # Verifica se la linea contiene prepare() con query SQL
+        if 'prepare(' in line.lower() or 'query(' in line.lower():
+            return True
+        
+        # Verifica se contiene parole chiave SQL
+        for keyword in sql_keywords:
+            if keyword in line_upper:
+                return True
+        
+        return False
+
+    def _is_multiline_echo_or_print(self, line: str) -> bool:
+        """Verifica se è un echo o print che inizia una stringa multilinea"""
+        line_stripped = line.strip()
+        
+        # Pattern per echo/print seguiti da virgolette di apertura
+        patterns = [
+            r'^\s*echo\s+["\']',
+            r'^\s*print\s+["\']',
+            r'^\s*echo\s*\(\s*["\']',
+            r'^\s*print\s*\(\s*["\']'
+        ]
+        
+        for pattern in patterns:
+            if re.match(pattern, line_stripped):
+                return True
+        
+        return False

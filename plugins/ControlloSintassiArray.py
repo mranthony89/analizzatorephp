@@ -101,30 +101,37 @@ class ArraySyntaxChecker(PluginBase):
         return in_single or in_double
     
     def check_array_syntax(self, filepath: str, lines: List[str], plugin_config=None, **kwargs) -> List[SyntaxError]:
-        """Controlla la sintassi degli array"""
-        errors = []
+    errors = []
+    
+    for i, line in enumerate(lines, 1):
+        # Salta se in HTML
+        if self._is_in_html_block(lines, i - 1):
+            continue
+            
+        # Salta commenti
+        in_single_comment, in_multi_comment = self._is_in_comment(lines, i)
+        if in_single_comment or in_multi_comment:
+            continue
         
-        for i, line in enumerate(lines, 1):
-            # Se siamo in un blocco HTML, salta
-            if self._is_in_html_block(lines, i - 1):
-                continue
-                
-            # Ignora commenti
-            in_single_comment, in_multi_comment = self._is_in_comment(lines, i)
-            if in_single_comment or in_multi_comment:
-                continue
-                
-            # Controlla virgole negli array
-            if 'array(' in line or '[' in line:
-                # Cerca pattern di elementi array senza virgola
-                if re.search(r'["\'\w]\s+["\'\w]', line):
-                    # Verifica che non sia dentro una stringa o un commento
-                    match = re.search(r'["\'\w]\s+["\'\w]', line)
-                    if match and not self._is_in_string(line, match.start()):
-                        errors.append(SyntaxError(
-                            i, line.strip(), "Virgola mancante in array",
-                            "Possibile virgola mancante tra elementi dell'array",
-                            "Aggiungi ',' tra gli elementi dell'array"
-                        ))
-        
-        return errors
+        # NUOVO: Ignora concatenazioni PHP
+        if re.search(r'\$\w+\s*\.\s*["\']', line):
+            continue  # È una concatenazione, non un errore array
+            
+        # NUOVO: Controlla solo dentro array() o []
+        if ('array(' in line or '[' in line) and (']' in line or ')' in line):
+            # Cerca pattern SOLO dentro le parentesi dell'array
+            array_content = self._extract_array_content(line)
+            if array_content and re.search(r'["\'\w]\s+["\'\w]', array_content):
+                if not self._is_in_string(line, 0):
+                    errors.append(SyntaxError(
+                        i, line.strip(), "Virgola mancante in array",
+                        "Possibile virgola mancante tra elementi dell'array",
+                        "Aggiungi ',' tra gli elementi dell'array"
+                    ))
+    
+    return errors
+
+def _extract_array_content(self, line: str) -> str:
+    """Estrae solo il contenuto degli array"""
+    # Implementa logica per estrarre contenuto tra parentesi/quadre
+    pass

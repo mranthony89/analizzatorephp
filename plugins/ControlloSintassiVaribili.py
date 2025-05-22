@@ -46,15 +46,17 @@ class VariableSyntaxChecker(PluginBase):
             'syntax_check': [self.check_variable_syntax]
         }
     
-    def _is_in_html_block(self, lines: List[str], line_num: int) -> bool:
-        """Verifica se una linea è all'interno di un blocco HTML (dopo ?>)"""
-        in_php = True
-        for i in range(line_num):
-            if '<?php' in lines[i] or '<?' in lines[i]:
-                in_php = True
-            elif '?>' in lines[i]:
-                in_php = False
-        return not in_php
+    def _is_in_html_context(self, line: str, pos: int) -> bool:
+    """Verifica se siamo in un contesto HTML dentro echo/print"""
+    # Cerca se siamo dentro un echo o print con HTML
+    echo_match = re.search(r'echo\s+["\'].*?["\']', line[:pos])
+    print_match = re.search(r'print\s+["\'].*?["\']', line[:pos])
+    
+    if echo_match or print_match:
+        # Verifica se contiene tag HTML
+        if re.search(r'<[^>]+>', line):
+            return True
+    return False
     
     def _is_in_comment(self, lines: List[str], line_num: int) -> Tuple[bool, bool]:
         """Verifica se una linea è in un commento. Ritorna (in_single_comment, in_multi_comment)"""
